@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Design tokens. Dark is the default; light (warm paper, teal accent) is set via
+   data-theme (layout script reads localStorage / prefers-color-scheme). */
+:root {
+  color-scheme: dark;
+  --bg: #0b1020;
+  --panel: #111833;
+  --panel2: #161f40;
+  --ink: #e6eaf5;
+  --mut: #8b95b3;
+  --line: #232d52;
+  --pri: #34d399;
+  --on-pri: #04130c;
+  --ok: #34d399;
+  --wa: #fbbf24;
+  --fa: #f87171;
+  --run: #60a5fa;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #faf7f2;
+  --panel: #fffdf9;
+  --panel2: #f3eee5;
+  --ink: #1f2a2e;
+  --mut: #5f686d;
+  --line: #e1d8c9;
+  --pri: #0f766e;
+  --on-pri: #ffffff;
+  --ok: #15803d;
+  --wa: #b45309;
+  --fa: #b91c1c;
+  --run: #0f766e;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-ink: var(--ink);
+  --color-mut: var(--mut);
+  --color-line: var(--line);
+  --color-pri: var(--pri);
+  --color-on-pri: var(--on-pri);
+  --color-ok: var(--ok);
+  --color-wa: var(--wa);
+  --color-fa: var(--fa);
+  --color-run: var(--run);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-display: var(--font-fraunces), Georgia, serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
