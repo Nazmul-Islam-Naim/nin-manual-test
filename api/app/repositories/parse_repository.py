@@ -24,7 +24,7 @@ class ParseRepository:
         return res.rowcount == 1
 
     def save_parsed(self, run_id: str, rows: list[tuple[TestCase, list[Step]]],
-                    rules: list[dict] | None = None) -> None:
+                    rules: list[dict] | None = None, access: dict | None = None) -> None:
         """Adds cases after any existing ones (a concurrent sweep case may exist); status -> parsed only if still parsing."""
         base = self.db.scalar(select(func.max(TestCase.order)).where(TestCase.run_id == run_id)) or 0
         for tc, steps in rows:
@@ -35,8 +35,10 @@ class ParseRepository:
         # id starts with the position so reading ordered by id keeps the manual's order
         self.db.add_all(FieldRule(id=f"{n:08x}-{str(uuid.uuid4())[9:]}", run_id=run_id, **r)
                         for n, r in enumerate(rules or []))
+        vals = {"access_scope": access["scope"], "login_user": access["login_user"],
+                "access_order": access["order"]} if access else {}
         self.db.execute(update(TestRun).where(TestRun.id == run_id, TestRun.status == "parsing")
-                        .values(status="parsed", error=None))
+                        .values(status="parsed", error=None, **vals))
         self.db.commit()
 
     def cases_with_steps(self, run_id: str) -> list[tuple[TestCase, list[Step]]]:

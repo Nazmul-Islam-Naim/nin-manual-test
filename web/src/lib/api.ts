@@ -81,6 +81,13 @@ export function createManual(input: { text: string } | { file: File }): Promise<
 
 export const getManual = (id: string) => request<Manual>(`/manuals/${encodeURIComponent(id)}`);
 
+// Contract 004 addendum g
+export type Schedule = "page" | "round_robin";
+export type AccessScope = "before_login" | "after_login" | "both";
+export const SCOPE_LABEL: Record<AccessScope, string> = { before_login: "Before login", after_login: "After login", both: "Both" };
+export type TestingStandard = "owasp" | "istqb" | "iso29119";
+export const STANDARD_LABEL: Record<TestingStandard, string> = { owasp: "OWASP", istqb: "ISTQB", iso29119: "ISO/IEC/IEEE 29119" };
+
 // Contract 002
 export type TestRun = {
   id: string;
@@ -94,6 +101,12 @@ export type TestRun = {
   started_at?: string | null;
   finished_at?: string | null;
   max_minutes?: number | null;
+  // Contract 004 addendum g: null on older runs
+  testing_standard?: TestingStandard | null;
+  schedule?: Schedule | null;
+  // Contract 004 addendum 2026-10-15 (i)
+  access_scope?: AccessScope | null;
+  login_user?: string | null;
 };
 
 export const createTestRun = (manual_id: string, url: string) =>
@@ -142,6 +155,7 @@ export type StepMeta = {
   field: string | null;
   form: string | null;
   source: "auto" | "manual";
+  standard_ref?: string | null; // addendum g
 };
 // Contract 003 addendum: rules the manual states
 export type FieldRule = { field: string; rule: string | null; valid: string[]; invalid: string[] };
@@ -172,9 +186,9 @@ export type RunSteps = {
 
 export const getRunSteps = (id: string) => request<RunSteps>(`/test-runs/${encodeURIComponent(id)}/steps`);
 
-export const executeRun = (id: string, credentials: { username: string; password: string } | null, submit_forms = true, validation_depth?: ValidationDepth, test_actions = true, max_minutes?: number, fast_mode = false) =>
+export const executeRun = (id: string, credentials: { username: string; password: string } | null, submit_forms = true, validation_depth?: ValidationDepth, test_actions = true, max_minutes?: number, fast_mode = false, testing_standard?: TestingStandard, schedule?: Schedule, access_scope?: AccessScope) =>
   request<{ id: string; status: TestRun["status"] }>(`/test-runs/${encodeURIComponent(id)}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credentials, submit_forms, test_actions, fast_mode, ...(max_minutes ? { max_minutes } : {}), ...(submit_forms && validation_depth ? { validation_depth } : {}) }),
+    body: JSON.stringify({ credentials, submit_forms, test_actions, fast_mode, ...(max_minutes ? { max_minutes } : {}), ...(submit_forms && validation_depth ? { validation_depth } : {}), ...(submit_forms && testing_standard ? { testing_standard } : {}), ...(submit_forms && schedule ? { schedule } : {}), ...(access_scope ? { access_scope } : {}) }),
   });

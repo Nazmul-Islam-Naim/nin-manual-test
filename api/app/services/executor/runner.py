@@ -1,5 +1,6 @@
 """Menu sweep executor. Run as: python -m app.services.executor <run_id>  (credentials JSON on stdin)."""
 import json
+import re
 import sys
 import time
 from urllib.parse import urlparse
@@ -76,6 +77,57 @@ def _login(page, creds: dict) -> None:
         pass
     page.wait_for_load_state("load")
     settle(page)
+
+
+LOGIN_LINK = re.compile(r"log\s*in|sign\s*in|লগইন", re.I)
+PW_WORDS = r"(?:password|পাসওয়ার্ড)"
+
+
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def manual_user(text: str) -> str | None:
+    """First e-mail address in the manual (demo logins are written as e-mails).
+    ponytail: heuristic, only used when parsing found no login_user."""
+    m = EMAIL.search(text or "")
+    return m.group(0) if m else None
+
+
+def manual_password(text: str, user: str) -> str | None:
+    """Password the manual states for `user`: right after the user (`u` / `p`), else after a 'password' word.
+    ponytail: regex heuristic; first match wins, so with several users in the manual the first one is used."""
+    tok = r"[`'\"]?([^\s`'\",;)]{3,64})"
+    for pat in (re.escape(user) + r"[`'\"]?\s*[/|,:]\s*" + tok,
+                PW_WORDS + r"[^\n`]{0,30}`([^`\n]{1,64})`",
+                PW_WORDS + r"\s*[:=\-–]\s*" + tok):
+        m = re.search(pat, text, re.I)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _sign_in(page, creds: dict) -> str | None:
+    """Open the login form (click a Log in link if the page has none) and sign in. -> reason it failed, or None."""
+    if not _has_password(page):
+        link = page.locator("a, button, [role=button], [role=link]", has_text=LOGIN_LINK).locator("visible=true").first
+        if link.count() == 0:
+            return "no login form or link found"
+        try:
+            link.click()
+            page.wait_for_load_state("load")
+            settle(page)
+        except Exception:
+            return "the login link could not be opened"
+        if not _has_password(page):
+            return "no password field after opening the login link"
+    login_path = urlparse(page.url).path
+    try:
+        _login(page, creds)
+    except Exception:
+        return "sign-in raised an error"
+    if urlparse(page.url).path == login_path and _has_password(page):
+        return "still on the login page, check the username and password"
+    return None
 
 
 def _highlight(page, menu: dict) -> None:
@@ -197,6 +249,16 @@ def _sweep(repo: ExecutionRepository, run_id: str, creds: dict | None, s: Settin
             page.set_default_timeout(timeout_ms)
             page.on("dialog", lambda d: d.dismiss())  # confirm()/alert() never block or confirm anything
             col = Collector(page)
+            scope = run.access_scope or "before_login"
+            no_login_note = None
+            if not creds and scope != "before_login":  # password from the manual text, never stored
+                manual = ParseRepository(repo.db).get_manual(run.manual_id)
+                user = run.login_user or manual_user(manual.text if manual else "")  # parse may not have found it
+                pw = manual_password(manual.text, user) if manual and user else None
+                creds = {"username": user, "password": pw} if pw else None
+                if not creds:
+                    no_login_note = (f"Test scope is '{scope}' but no login was found in the manual; "
+                                     "tested public pages only. Enter it under Login (optional)")
             if creds:
                 col.secrets.append(creds.get("password"))
             try:
@@ -205,7 +267,31 @@ def _sweep(repo: ExecutionRepository, run_id: str, creds: dict | None, s: Settin
                 repo.set_status(run_id, "failed", f"Could not open {run.base_url}: {_short(e)}")
                 return
             settle(page)
-            if creds:
+            notes = [no_login_note] if no_login_note else []
+            public, public_url, login_menus = [], page.url, None
+            if creds and scope != "before_login":
+                u = urlparse(page.url)
+                origin = f"{u.scheme}://{u.netloc}"
+                if not _has_password(page):
+                    public = _discover(page, origin)
+                reason = _sign_in(page, creds)
+                if reason:  # not a failure: carry on with the public pages
+                    notes.append(f"Login was not completed ({reason}); tested public pages only")
+                    page.goto(public_url, wait_until="load")
+                    settle(page)
+                    login_menus, public = [], public or _discover(page, origin)
+                else:
+                    u = urlparse(page.url)
+                    login_menus = _discover(page, f"{u.scheme}://{u.netloc}")
+                    skip = {m["abs"] for m in public}
+                    login_menus = [m for m in login_menus if m["abs"] not in skip]
+                    for m in login_menus:
+                        m["start"] = page.url
+                    if scope == "after_login":
+                        public = []
+                for m in public:
+                    m["start"] = public_url
+            elif creds:
                 login_path = urlparse(page.url).path
                 try:
                     _login(page, creds)
@@ -217,9 +303,13 @@ def _sweep(repo: ExecutionRepository, run_id: str, creds: dict | None, s: Settin
                     repo.set_status(run_id, "failed", "Login failed")  # never include credentials
                     return
             start_url = page.url
-            u = urlparse(start_url)
-            menus = _discover(page, f"{u.scheme}://{u.netloc}")
-            notes = []
+            if login_menus is None:
+                u = urlparse(start_url)
+                menus = _discover(page, f"{u.scheme}://{u.netloc}")
+            elif scope == "both" and run.access_order == "login_first":
+                menus = login_menus + public
+            else:  # ponytail: public pages are visited inside the logged-in session; separate context if that matters
+                menus = public + login_menus
             if not menus:
                 if _has_password(page):
                     path = urlparse(page.url).path or "/"
@@ -245,20 +335,33 @@ def _sweep(repo: ExecutionRepository, run_id: str, creds: dict | None, s: Settin
                 if not rules and not parse_repo.has_manual_cases(run_id):
                     notes.append("Manual rules were not available yet (manual parsing had not finished)")
             step_ids = repo.create_sweep(run_id, [(m["label"], m["href"]) for m in menus], "; ".join(notes) or None)
-            form_state = {"tested": 0, "cases": 0, "jobs": []}
+            standard = run.testing_standard or s.exec_testing_standard
+            schedule = run.schedule or s.exec_schedule
+            form_state = {"tested": 0, "cases": 0, "jobs": [],
+                          "menu_urls": {sanitize_url(m["abs"]) for m in menus if m["href"] is not None}}
             try:
                 for n, (menu, step_id) in enumerate(zip(menus, step_ids), 1):  # phase 1: breadth
                     if time.monotonic() > deadline:
                         raise forms.DeadlineExceeded()
-                    _menu(page, repo, run_id, n, menu, step_id, start_url, col, timeout_ms, shots, submit_forms,
+                    first = len(form_state["jobs"])
+                    _menu(page, repo, run_id, n, menu, step_id, menu.get("start", start_url), col, timeout_ms, shots, submit_forms,
                           test_actions, creds, s, form_state, notes, deadline, depth, rules)
-                active = list(form_state["jobs"])  # phase 2: depth, one case per form per round
+                    if schedule == "page":  # finish this page's validation cases before the next menu
+                        for job in form_state["jobs"][first:]:
+                            while not job.finished:
+                                if time.monotonic() > deadline:
+                                    raise forms.DeadlineExceeded()
+                                if job.cases is None:
+                                    cases.prepare(page, repo, job, s, form_state, notes, depth, rules, standard)
+                                if not job.finished:
+                                    cases.run_next(page, repo, job, col)
+                active = [j for j in form_state["jobs"] if not j.finished]  # round_robin phase 2: one case per form per round
                 while active:
                     for job in list(active):
                         if time.monotonic() > deadline:
                             raise forms.DeadlineExceeded()
                         if job.cases is None:
-                            cases.prepare(page, repo, job, s, form_state, notes, depth, rules)
+                            cases.prepare(page, repo, job, s, form_state, notes, depth, rules, standard)
                         if not job.finished:
                             cases.run_next(page, repo, job, col)
                         if job.finished:

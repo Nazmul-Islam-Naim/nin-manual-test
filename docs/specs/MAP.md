@@ -24,3 +24,7 @@
 | 014 | Page actions and Markdown export (applied to 006) | instructions/014-page-actions-and-md-export.md | specs/006-report-generation.md | updates | 2026-10-07 |
 | 015 | Time budget and phases (applied to 004) | instructions/015-time-budget-and-phases.md | specs/004-test-execution.md | updates | 2026-10-07 |
 | 016 | Fewer false alarms (applied to 004) | instructions/016-fewer-false-alarms.md | specs/004-test-execution.md | updates | 2026-10-07 |
+| 017 | Testing standard (applied to 004; built, 121 backend tests pass, web tsc/lint/build pass, no run-history view yet, not run-tested in browser) | instructions/017-testing-standard.md | specs/004-test-execution.md | updates | 2026-10-15 |
+| 018 | Page-first scheduling (applied to 004; built, 127 backend tests pass, web tsc/lint/build pass, not run-tested in a headed browser) | instructions/018-page-first-scheduling.md | specs/004-test-execution.md | updates | 2026-10-15 |
+| 019 | Manual-driven login scope (applied to 003; built, 141 backend tests pass)| instructions/019-manual-driven-login-scope.md | specs/003-manual-parsing.md | updates | 2026-10-15 |
+| 019 | Manual-driven login scope (applied to 004; built, 141 backend tests pass, web tsc/lint/build pass, not run-tested against a real site) | instructions/019-manual-driven-login-scope.md | specs/004-test-execution.md | updates | 2026-10-15 |

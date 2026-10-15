@@ -79,7 +79,7 @@ export default function ResultRow({ st, form, kase, action }: { st: Step; form?:
         </span>
         <span className="block break-all font-mono text-xs text-mut">
           {kase
-            ? `Expected: ${st.expected ?? "-"}`
+            ? `Expected: ${st.expected ?? "-"}${st.meta?.standard_ref ? ` · mapped to ${st.meta.standard_ref}` : ""}`
             : form
               ? st.value === "empty"
                 ? "form · empty submit"

@@ -11,6 +11,9 @@ import {
   type ManualSummary,
   type RunSteps,
   type ValidationDepth,
+  type AccessScope,
+  type Schedule,
+  type TestingStandard,
   type TestRun,
 } from "@/lib/api";
 
@@ -102,13 +105,13 @@ export function useRunSession() {
   );
 
   const execute = useCallback(
-    async (credentials: { username: string; password: string } | null, submitForms: boolean, depth?: ValidationDepth, testActions = true, maxMinutes?: number, fastMode = false) => {
+    async (credentials: { username: string; password: string } | null, submitForms: boolean, depth?: ValidationDepth, testActions = true, maxMinutes?: number, fastMode = false, standard?: TestingStandard, schedule?: Schedule, accessScope?: AccessScope) => {
       if (!runId) return;
       setProblem(null);
       setTimedOut(false);
       setStarting(true);
       try {
-        await executeRun(runId, credentials, submitForms, depth, testActions, maxMinutes, fastMode);
+        await executeRun(runId, credentials, submitForms, depth, testActions, maxMinutes, fastMode, standard, schedule, accessScope);
         setRun((r) => (r ? { ...r, status: "running", error: null } : r));
         // drop the previous sweep, keep the manual test cases
         setData((d) => (d ? { ...d, test_cases: d.test_cases.filter((tc) => tc.title !== "Menu sweep"), summary: undefined, note: null } : d));

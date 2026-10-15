@@ -2,7 +2,7 @@
 id: "003"
 title: Manual parsing
 status: built
-date: 2026-10-07
+date: 2026-10-15
 instruction: docs/specs/instructions/003-manual-parsing.md
 ---
 
@@ -38,6 +38,8 @@ Out of scope: selector generation, editing, execution.
 
 - **Field rules (instruction 013):** the parse output also contains `field_rules`: `[{ field, rule?, valid: [<=5 strings], invalid: [<=5 strings] }]` taken only from what the manual states (e.g. "Phone must be 11 digits"). Optional in the schema (absent = []). Stored per run and returned by `GET /test-runs/{id}/steps` as `field_rules`.
 
+- **Access scope (instruction 019):** the parse output also contains `access`: `{ scope: "before_login" | "after_login" | "both", login_user?: string, order?: "public_first" | "login_first" }`, taken only from what the manual states (a demo login, login-only features, role steps). Unclear: `after_login` if credentials are found, else `before_login`. Optional in the schema (absent = before_login). Stored per run as `access_scope` and `login_user`; the password is never stored (read from the manual text when a run starts).
+
 ## Acceptance & Test criteria
 - A manual with 3 numbered scenarios yields 3 test cases with steps in the original order.
 - A step missing from the manual is not generated; vague text is flagged `unclear`.
@@ -54,6 +56,7 @@ Out of scope: selector generation, editing, execution.
 - Allow step editing before execution in a later spec?
 
 ## Change log
+- 2026-10-15: Parse output gains `access` (scope, login user, order) (instruction 019).
 - 2026-10-07: Parse output gains `field_rules` (instruction 013).
 - 2026-10-06: Added `claude_cli` provider (instruction 009).
 - 2026-10-05: LLM provider abstraction (Claude, OpenRouter, Gemini) and FastAPI stack (instruction 008). Deploy note: replaces single `ANTHROPIC_API_KEY` with `LLM_PROVIDER` plus a key per provider. See docs/specs/instructions/008-stack-and-decisions.md.

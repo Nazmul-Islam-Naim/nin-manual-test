@@ -31,14 +31,17 @@ class ExecutionService:
 
     def execute(self, run_id: str, credentials: dict | None, submit_forms: bool | None = None,
                 validation_depth: str | None = None, test_actions: bool | None = None,
-                max_minutes: int | None = None, fast_mode: bool | None = None) -> None:
+                max_minutes: int | None = None, fast_mode: bool | None = None,
+                testing_standard: str | None = None, schedule: str | None = None,
+                access_scope: str | None = None) -> None:
         run = self.repo.get_run(run_id)
         if run is None:
             raise AppError(404, "test_run_not_found", "Test run not found.")
         if run.status == "running":  # parsing may continue concurrently (it never touches the sweep)
             raise AppError(409, "run_busy", "This run is already running.")
         limit = max_minutes or max(1, round(get_settings().exec_overall_timeout_s / 60))
-        self.repo.start(run_id, limit)
+        self.repo.start(run_id, limit, testing_standard or get_settings().exec_testing_standard,
+                        schedule or get_settings().exec_schedule, access_scope)
         try:
             self.spawn(run_id, credentials, submit_forms, validation_depth, test_actions, fast_mode)
         except OSError as e:

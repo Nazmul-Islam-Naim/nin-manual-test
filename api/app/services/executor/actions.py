@@ -279,7 +279,10 @@ def test_page_actions(page, repo, menu_step_id: str, menu_label: str, page_url: 
                              duration_ms=int((time.monotonic() - t0) * 1000), error_type=etype,
                              page_url=sanitize_url(page.url),
                              details=col.details(r["excerpt"]) if etype else None)
-            if submit_forms and r["status"] != "failed" and r["outcome"] in ("navigated", "modal"):
+            if (r["outcome"] == "navigated" and r["status"] != "failed"
+                    and sanitize_url(page.url) in state.get("menu_urls", ())):  # instruction 018
+                repo.append_step_value(sid, " (page is a menu item: its forms are tested under that menu)")
+            elif submit_forms and r["status"] != "failed" and r["outcome"] in ("navigated", "modal"):
                 ctx = ({"url": page.url, "action": None} if r["outcome"] == "navigated"
                        else {"url": page_url, "action": {"label": c["label"], "kind": c["kind"], "nth": c["nth"]}})
                 forms.test_page_forms(page, repo, sid, row[0], ctx, col, creds, s, state, notes, deadline, depth, rules)

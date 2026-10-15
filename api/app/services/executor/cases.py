@@ -50,9 +50,27 @@ class Case:
         v = f"{LABELS[self.category]}: {self.value}"
         return v if len(v) <= 80 else v[:79] + "…"
 
-    def meta(self, form_label: str) -> dict:
+    def meta(self, form_label: str, standard: str | None = None) -> dict:
         return {"kind": self.kind, "category": self.category, "field": self.field, "form": form_label,
-                "source": self.source}
+                "source": self.source, "standard_ref": standard_ref(standard, self.category)}
+
+
+# ---- testing standard (instruction 017): only order and tags, never the case set -------------
+
+STANDARDS = ("owasp", "istqb", "iso29119")
+PRIORITY = {"owasp": ("xss", "sqli", "special", "unicode", "long"), "istqb": ("boundary", "blank", "format"),
+            "iso29119": ("boundary", "blank", "format")}
+TECHNIQUE = {"boundary": "Boundary Value Analysis", "format": "Equivalence Partitioning",
+             "blank": "Equivalence Partitioning"}
+
+
+def standard_ref(standard: str | None, category: str) -> str | None:
+    if standard == "owasp":
+        return "OWASP A03: Injection" if category in ("xss", "sqli") else "OWASP ASVS V5: Validation"
+    if standard in ("istqb", "iso29119"):
+        t = TECHNIQUE.get(category, "Error Guessing")
+        return f"ISTQB: {t}" if standard == "istqb" else f"ISO/IEC/IEEE 29119-4: {t}"
+    return None
 
 
 # ---- field kind inference ------------------------------------------------------------------
@@ -134,12 +152,14 @@ def _catalog(f: dict, k: str) -> list[tuple[str, str]]:
     return out
 
 
-def auto_cases(f: dict, depth: str) -> list[Case]:
+def auto_cases(f: dict, depth: str, standard: str | None = None) -> list[Case]:
     k = infer_kind(f)
     if k is None or depth == "basic":
         return []
-    return [Case(KIND_OF[c], c, f["i"], f["label"], v) for c, v in _catalog(f, k)
-            if depth == "thorough" or c in STANDARD]
+    out = [Case(KIND_OF[c], c, f["i"], f["label"], v) for c, v in _catalog(f, k)
+           if depth == "thorough" or c in STANDARD]
+    pri = PRIORITY.get(standard, ())
+    return sorted(out, key=lambda c: pri.index(c.category) if c.category in pri else len(pri))  # stable
 
 
 # ---- manual rules --------------------------------------------------------------------------
@@ -169,12 +189,12 @@ def manual_cases(f: dict, rules) -> list[Case]:
     return out
 
 
-def build_cases(fields: list[dict], rules, depth: str) -> list[Case]:
+def build_cases(fields: list[dict], rules, depth: str, standard: str | None = None) -> list[Case]:
     """Manual cases first, then auto cases round-robin across fields so a cap still covers every field."""
     if depth == "basic":
         return []
     manual = [c for f in fields for c in manual_cases(f, rules)]
-    per_field = [auto_cases(f, depth) for f in fields]
+    per_field = [auto_cases(f, depth, standard) for f in fields]
     return manual + [c for tier in zip_longest(*per_field) for c in tier if c]
 
 
@@ -310,7 +330,8 @@ class Job:
         return self.cases is not None and self.done >= len(self.cases)
 
 
-def prepare(page, repo, job: Job, s, state: dict, notes: list[str], depth: str, rules) -> None:
+def prepare(page, repo, job: Job, s, state: dict, notes: list[str], depth: str, rules,
+            standard: str | None = None) -> None:
     """Generate the form's cases, apply caps, add their steps after the job's anchor step."""
     job.cases = []
     try:
@@ -318,7 +339,7 @@ def prepare(page, repo, job: Job, s, state: dict, notes: list[str], depth: str, 
         fields = page.locator("form").nth(job.form["idx"]).evaluate(FIELDS_JS)
     except Exception:
         return
-    cs = build_cases(fields, rules, depth)
+    cs = build_cases(fields, rules, depth, standard)
     label = f"{job.menu_label} > {job.form['label']}"
     if len(cs) > s.max_cases_per_form:
         notes.append(f"'{label}' had {len(cs)} cases, ran the first {s.max_cases_per_form}")
@@ -332,7 +353,7 @@ def prepare(page, repo, job: Job, s, state: dict, notes: list[str], depth: str, 
     if not cs:
         return
     state["cases"] += len(cs)
-    job.ids = repo.add_form_steps(job.anchor, [(f"{label} > {c.field}", c.shown, c.expected, c.meta(job.form["label"]))
+    job.ids = repo.add_form_steps(job.anchor, [(f"{label} > {c.field}", c.shown, c.expected, c.meta(job.form["label"], standard))
                                                for c in cs])
     job.cases = cs
 

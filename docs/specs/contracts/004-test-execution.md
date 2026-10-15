@@ -213,3 +213,33 @@ Speed: remove browser-level `slow_mo`; add `pace(page)` (waits `EXEC_SLOW_MO_MS`
 - 5xx still wins over 401/403/409 when both appear.
 - The code-like field rule is a plain substring match (for example "ref" also matches "prefix"); harmless, it only adds a unique suffix.
 - Unique digits never repeat inside one process; phones are `017` + 8 digits.
+
+## Addendum 2026-10-15 (g) - testing standard (instruction 017)
+`POST /test-runs/{id}/execute` body gains optional `"testing_standard": "owasp" | "istqb" | "iso29119"` (default `"owasp"`, env `EXEC_TESTING_STANDARD`; `422 invalid_request` for other values). `GET /test-runs/{id}` gains `"testing_standard": string | null` (null for older runs). Each validation-case step's `meta` gains `"standard_ref": string | null`.
+- Order: owasp -> xss, sqli, special, unicode, long, then the rest; istqb and iso29119 -> boundary, blank, format, then the rest. Within a field the existing order is kept; the case set and caps (`MAX_CASES_PER_FORM`, `MAX_CASES`) are unchanged.
+- Tags: see instruction 017 (OWASP A03 / ASVS V5; ISTQB Boundary Value Analysis, Equivalence Partitioning, Error Guessing; ISO/IEC/IEEE 29119-4 technique names).
+- Setup panel: "Testing standard" select (OWASP default), sent as `testing_standard`. Report and run history show the standard and each case's `standard_ref`.
+
+## Addendum 2026-10-15 (h) - page-first scheduling (instruction 018)
+`POST /test-runs/{id}/execute` body gains optional `"schedule": "page" | "round_robin"` (default `"page"`, env `EXEC_SCHEDULE`; `422 invalid_request` for other values). `GET /test-runs/{id}` gains `"schedule": string | null` (null for older runs).
+- `page`: for each menu in order, run phase 1 for that menu, then all of that menu's validation cases to completion, then the next menu. Deadline and stop checks apply between cases; remaining steps stay pending.
+- `round_robin`: the instruction 015 order (all phase 1 first, then one case per form in turn).
+- Page actions that navigate: if the destination URL (normalized) is already a menu URL, its forms are not tested inside the action; the action step's `value` gets the suffix " (page is a menu item: its forms are tested under that menu)" (`target` unchanged). Match is on the sanitized URL, so a differing query string does not match; menu items without an href are not in the set.
+- Setup panel: "Schedule" select, "Page by page" (default) / "Breadth first", hint: breadth first covers every form when the time limit is short; sent as `schedule`.
+
+## Addendum 2026-10-15 (i) - manual-driven login scope (instruction 019)
+Parse output (spec 003) gains `access`: `{ "scope": "before_login"|"after_login"|"both", "login_user": string|null, "order": "public_first"|"login_first"|null }`. `GET /test-runs/{id}` gains `"access_scope": string | null` and `"login_user": string | null` (null for older runs). The password is never returned or stored.
+`POST /test-runs/{id}/execute` body gains optional `"access_scope": "before_login"|"after_login"|"both"` (default: the run's detected value; `422 invalid_request` otherwise).
+- Credentials: body `credentials` first; else `login_user` plus the password read from the stored manual text at run start (masked in `Collector.secrets`, logs and errors).
+- Start page without a password field and credentials available: click a link whose text matches log in, login, sign in, লগইন; then sign in. Success = the page left the login path or has no password field.
+- `after_login`: sweep the menus found after login; skip the public menus. `both`: public menus first when `order` is `public_first` or null, else after login first. `before_login`: today's behavior.
+- Login not completed: status stays `running`/`done`, `sweep_note` gains "Login was not completed (<reason>); tested public pages only". Never `failed` for this reason.
+- Setup panel: "Detected: <scope>, user <login_user>" with a select to change the scope; sent as `access_scope`. The password is never shown.
+
+Notes (added at reconcile, manual-driven login scope):
+- The run also stores `access_order` (`public_first`|`login_first`|null, internal, not returned) because the executor needs it.
+- `both` with `public_first`: login happens once before the sweep, so the public menus are visited inside the already-logged-in session (order is right, but they are not visited logged out). A separate browser context would fix this; not done.
+- Login menus that duplicate a public URL are dropped. A missing or invalid `access` in the LLM output becomes null (behaves as `before_login`); it never fails the parse.
+- The password is read from the stored manual text (right after the user, else near `password` / `পাসওয়ার্ড`), added to `Collector.secrets`, and never stored or returned.
+- The dev DB gets the new columns (`access_scope`, `login_user`, `access_order`) by the startup ALTER, so the API must be restarted once.
+

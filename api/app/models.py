@@ -31,6 +31,11 @@ class TestRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # naive UTC, execution start
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # naive UTC, done/failed
     max_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)  # effective time limit
+    testing_standard: Mapped[str | None] = mapped_column(String(16), nullable=True)  # owasp|istqb|iso29119, null = old run
+    schedule: Mapped[str | None] = mapped_column(String(16), nullable=True)  # page|round_robin, null = old run
+    access_scope: Mapped[str | None] = mapped_column(String(16), nullable=True)  # before_login|after_login|both
+    login_user: Mapped[str | None] = mapped_column(String(255), nullable=True)  # never the password
+    access_order: Mapped[str | None] = mapped_column(String(16), nullable=True)  # public_first|login_first
 
 
 class TestCase(Base):

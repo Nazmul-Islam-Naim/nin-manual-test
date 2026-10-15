@@ -67,9 +67,10 @@ def _clean():
     app.dependency_overrides.clear()
 
 
-def sweep(site, settings=None):
+def sweep(site, settings=None, schedule="round_robin"):
     rid = make_run(site + "/")
-    runner.run_sweep(rid, None, settings, submit_forms=True, validation_depth="standard")
+    runner.run_sweep(rid, None, settings or dataclasses.replace(get_settings(), exec_schedule=schedule),
+                     submit_forms=True, validation_depth="standard")
     return rid
 
 
@@ -79,7 +80,7 @@ def case_steps(b):
 
 # ---- scheduling ---------------------------------------------------------------------------------
 
-def test_round_robin_creates_steps_on_first_turn_and_keeps_step_order(client, tsite, monkeypatch):
+def test_round_robin_creates_steps_on_first_turn_and_keeps_step_order(client, tsite, monkeypatch):  # schedule=round_robin
     events = []
     prep, nxt = cases.prepare, cases.run_next
     monkeypatch.setattr(cases, "prepare", lambda page, repo, job, *a: (events.append(("prepare", job.form["name"])),
@@ -117,7 +118,7 @@ def test_graceful_stop_at_time_limit_keeps_done_and_pending(client, tsite, monke
         if count[0] == 3:
             offset[0] = 10_000
     monkeypatch.setattr(cases, "run_next", run_next)
-    rid = sweep(tsite, dataclasses.replace(get_settings(), exec_overall_timeout_s=600))
+    rid = sweep(tsite, dataclasses.replace(get_settings(), exec_overall_timeout_s=600, exec_schedule="round_robin"))
     b, run = steps(client, rid), client.get(f"/test-runs/{rid}").json()
     assert b["status"] == "done" and run["status"] == "done" and run["error"] is None
     assert count[0] == 3
@@ -130,6 +131,40 @@ def test_graceful_stop_at_time_limit_keeps_done_and_pending(client, tsite, monke
     assert len(case_steps(b)) == 20 and sum(1 for s in case_steps(b) if s["result"]) == 3
     assert "Overall time limit" not in str(b)
     assert b["max_minutes"] == 10 and b["started_at"] and b["finished_at"]
+
+
+def test_page_first_finishes_each_page_before_the_next(client, tsite, monkeypatch):
+    runs, nxt = [], cases.run_next
+    monkeypatch.setattr(cases, "run_next", lambda page, repo, job, col: (runs.append(job.form["name"]),
+                                                                          nxt(page, repo, job, col))[1])
+    rid = sweep(tsite, schedule="page")
+    assert runs == ["FormA"] * 10 + ["FormB"] * 10
+    b = steps(client, rid)
+    assert b["status"] == "done" and b["summary"]["pending"] == 0 and len(case_steps(b)) == 20
+    run = client.get(f"/test-runs/{rid}").json()
+    assert run["schedule"] is None  # make_run never went through execute (old-run shape)
+
+
+def test_page_first_time_limit_leaves_later_pages_pending(client, tsite, monkeypatch):
+    offset, real = [0.0], time.monotonic
+    monkeypatch.setattr(runner, "time", SimpleNamespace(monotonic=lambda: real() + offset[0]))
+    nxt, count = cases.run_next, [0]
+
+    def run_next(page, repo, job, col):
+        nxt(page, repo, job, col)
+        count[0] += 1
+        if count[0] == 3:
+            offset[0] = 10_000
+    monkeypatch.setattr(cases, "run_next", run_next)
+    rid = sweep(tsite, dataclasses.replace(get_settings(), exec_overall_timeout_s=600, exec_schedule="page"))
+    b = steps(client, rid)
+    st = b["test_cases"][0]["steps"]
+    assert b["status"] == "done" and count[0] == 3
+    menus = {s["target"]: s for s in st if s["action"] == "visit_menu"}
+    assert menus["Page A"]["result"]["status"] == "passed"
+    assert menus["Page B"]["result"] is None and menus["Page C"]["result"] is None  # later menus stay pending
+    assert sum(1 for s in case_steps(b) if s["result"]) == 3
+    assert "Stopped at the time limit (10 min)" in b["note"]
 
 
 def test_tiny_budget_stops_before_menus_without_failing(client, tsite):

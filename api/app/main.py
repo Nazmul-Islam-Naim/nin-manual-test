@@ -22,7 +22,10 @@ async def lifespan(_: FastAPI):
         for col in ("error", "sweep_note"):
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE test_runs ADD COLUMN {col} TEXT"))
-        for col, typ in (("started_at", "DATETIME"), ("finished_at", "DATETIME"), ("max_minutes", "INTEGER")):
+        for col, typ in (("started_at", "DATETIME"), ("finished_at", "DATETIME"), ("max_minutes", "INTEGER"),
+                         ("testing_standard", "VARCHAR(16)"), ("schedule", "VARCHAR(16)"),
+                         ("access_scope", "VARCHAR(16)"), ("login_user", "VARCHAR(255)"),
+                         ("access_order", "VARCHAR(16)")):
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE test_runs ADD COLUMN {col} {typ}"))
     cols = {c["name"] for c in inspect(engine).get_columns("step_results")}

@@ -2,7 +2,7 @@
 id: "004"
 title: Test execution engine
 status: built
-date: 2026-10-07
+date: 2026-10-15
 instruction: docs/specs/instructions/004-test-execution.md
 ---
 
@@ -50,6 +50,12 @@ Out of scope: manual-step execution (later requirement), forms in modals/wizards
 
 - **Fewer false alarms (instruction 016):** a disabled or unclickable submit is never a crash (rejected -> passed for empty/invalid/security; warning `submit_blocked` for valid/sample/tolerant); an XSS payload that is escaped or not shown passes, only executed or live-markup payloads fail; already-active tabs/buttons pass without a click and `#fragment` links count a hash or scroll change as a reaction; sample phones and code-like fields are unique per submission; 401/403 -> warning `permission_denied` (also for invalid cases, which are inconclusive) and 409 on valid data -> warning `possible_duplicate`.
 
+- **Testing standard (instruction 017):** body `testing_standard` (`owasp` default | `istqb` | `iso29119`; env `EXEC_TESTING_STANDARD`; `422 invalid_request` otherwise) is independent of `validation_depth`. It only reorders validation cases (OWASP: xss, sqli, special, unicode, long first; ISTQB/ISO 29119: boundary, blank, format first) and adds `standard_ref` to each case's meta and step result (for example xss -> "OWASP A03: Injection", boundary -> "ISTQB: Boundary Value Analysis"); the case set and caps are unchanged. The setup panel has a "Testing standard" select; the report and run history show the run's standard and each case's tag, worded "mapped to", never "compliant". Old runs: null.
+
+- **Page-first scheduling (instruction 018):** default order finishes each menu page completely (forms, actions, then that page's validation cases) before the next; the browser no longer returns to earlier pages. Body `schedule` (`page` default | `round_robin`; env `EXEC_SCHEDULE`; `422 invalid_request` otherwise) keeps the breadth-first order of instruction 015 as an option. An action that navigates to a URL already in the menu set does not form-test it again.
+
+- **Manual-driven login (instruction 019):** the run uses the parsed `access_scope`. Credentials: the "Login (optional)" values, else the manual's (password read from the stored manual text at run start, masked everywhere, never stored). If the start page has no password field and credentials exist, the engine clicks a Log in / Sign in / লগইন link, signs in, and tests the menus after login first (`after_login`; public pages skipped, or last for `both`). If login cannot be completed the run continues with the public menus and a note says so; it is not `failed`. Body `access_scope` overrides the detected value.
+
 ## Acceptance & Test criteria
 - Against a local test site with a nav of 4 links (one broken, one "Logout"), the sweep visits the 3 safe links, marks the broken one `failed`, and skips Logout.
 - Menus are visited in page order, one by one, in a visible window (manual check with `EXEC_HEADED=true`).
@@ -74,6 +80,9 @@ Needs Playwright and Chromium (`playwright install chromium`). The visible windo
 - Add Firefox/WebKit later?
 
 ## Change log
+- 2026-10-15: Manual-driven login scope: login from the manual, login-link discovery, logged-in pages first (instruction 019).
+- 2026-10-15: Page-first scheduling by default, `schedule` option, no duplicate form tests on action-navigated menu pages (instruction 018).
+- 2026-10-15: Selectable testing standard (OWASP default, ISTQB, ISO 29119) reorders cases and tags them with a reference (instruction 017).
 - 2026-10-07: Fewer false alarms: submit_blocked, escaped XSS passes, already-active controls, unique sample data, permission_denied/possible_duplicate (instruction 016).
 - 2026-10-07: Two-phase scheduling, graceful stop at the time limit, selectable budget, faster cases (instruction 015).
 - 2026-10-07: Page action sweep with modal/page form testing (instruction 014).

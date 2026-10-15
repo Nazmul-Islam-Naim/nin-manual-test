@@ -50,6 +50,19 @@ def clean_rules(raw) -> list[dict]:
     return out
 
 
+SCOPES = ("before_login", "after_login", "both")
+
+
+def clean_access(raw) -> dict | None:
+    """Lenient: anything malformed -> None (the run keeps access_scope null = before_login). Never a password."""
+    if not isinstance(raw, dict) or raw.get("scope") not in SCOPES:
+        return None
+    user = raw.get("login_user")
+    user = user.strip()[:255] if isinstance(user, str) and user.strip() else None
+    order = raw.get("order") if raw.get("order") in ("public_first", "login_first") else None
+    return {"scope": raw["scope"], "login_user": user, "order": order}
+
+
 SYSTEM_PROMPT = """You convert a QA test manual into structured test cases for an automated browser executor.
 Rules:
 - Extract ONLY what the manual states. Never invent steps, targets or values.
@@ -58,8 +71,9 @@ Rules:
 - Mark anything vague or ambiguous with "unclear": true.
 - Keep scenarios and steps in the manual's original order; step "order" starts at 1 within each test case.
 - Also extract field-level rules and example values the manual states (e.g. "Phone must be 11 digits starting with 01"): field name as the manual calls it, the rule text, up to 5 valid and up to 5 invalid example values. Do NOT invent rules or examples; use [] when there are none.
+- Also state the access scope, only from what the manual says: "before_login" (public pages), "after_login" (pages behind a login) or "both"; "login_user" = the login name/email the manual gives (first one if several); "order" = "public_first" or "login_first" when the manual states which to test first, else null. If unclear: "after_login" when the manual gives login credentials, else "before_login". NEVER put the password in "access".
 - Reply with ONLY one JSON object, no prose, no code fences, exactly of this shape:
-{"test_cases":[{"title":str,"steps":[{"order":int,"action":str,"target":str,"value":str|null,"expected":str|null,"unclear":bool}]}],"field_rules":[{"field":str,"rule":str|null,"valid":[str],"invalid":[str]}]}"""
+{"test_cases":[{"title":str,"steps":[{"order":int,"action":str,"target":str,"value":str|null,"expected":str|null,"unclear":bool}]}],"field_rules":[{"field":str,"rule":str|null,"valid":[str],"invalid":[str]}],"access":{"scope":str,"login_user":str|null,"order":str|null}}"""
 
 
 def chunk_text(text: str, limit: int) -> list[str]:
@@ -90,13 +104,14 @@ class ParsingService:
     def __init__(self, repo: ParseRepository, provider: LLMProvider, chunk_chars: int):
         self.repo, self.provider, self.chunk_chars = repo, provider, chunk_chars
 
-    def _parse_chunk(self, chunk: str) -> tuple[ParsedManual, list[dict]]:
+    def _parse_chunk(self, chunk: str) -> tuple[ParsedManual, list[dict], dict | None]:
         last = ""
         for _ in range(2):  # one retry on schema mismatch
             raw = self.provider.complete(SYSTEM_PROMPT, f"Manual:\n\n{chunk}")
             try:
                 data = _extract_json(raw)
-                return ParsedManual.model_validate(data), clean_rules(data.get("field_rules"))
+                return ParsedManual.model_validate(data), clean_rules(data.get("field_rules")), \
+                    clean_access(data.get("access"))
             except (ValueError, ValidationError) as e:  # JSONDecodeError is a ValueError
                 last = e.__class__.__name__
         raise ParseFailed(f"The model output did not match the required schema after a retry ({last}).")
@@ -110,10 +125,12 @@ class ParsingService:
         try:
             cases: list[ParsedCase] = []
             rules: list[dict] = []
+            access = None
             for chunk in chunk_text(manual.text, self.chunk_chars):
-                parsed, chunk_rules = self._parse_chunk(chunk)
+                parsed, chunk_rules, chunk_access = self._parse_chunk(chunk)
                 cases += parsed.test_cases
                 rules += chunk_rules
+                access = access or chunk_access  # first chunk that states it
             if not cases:
                 raise ParseFailed("No test cases could be extracted from the manual.")
             rows = []
@@ -123,7 +140,7 @@ class ParsingService:
                               target=s.target, value=s.value, expected=s.expected, unclear=s.unclear)
                          for i, s in enumerate(sorted(c.steps, key=lambda s: s.order), 1)]
                 rows.append((tc, steps))
-            self.repo.save_parsed(run_id, rows, rules)
+            self.repo.save_parsed(run_id, rows, rules, access)
         except (ParseFailed, LLMError) as e:
             self.repo.set_status_if(run_id, "failed", ("parsing",), str(e))
         except Exception:  # never leave a run stuck in "parsing"

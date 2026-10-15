@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ALLOWED_EXT, ApiError, MAX_UPLOAD_BYTES, type ValidationDepth } from "@/lib/api";
+import { ALLOWED_EXT, ApiError, MAX_UPLOAD_BYTES, type AccessScope, SCOPE_LABEL, type Schedule, type TestRun, type TestingStandard, type ValidationDepth } from "@/lib/api";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import type { ManualInput } from "./useRunSession";
 
-export type RunOptions = { username: string; password: string; submitForms: boolean; depth: ValidationDepth; testActions: boolean; maxMinutes: number; fastMode: boolean };
+export type RunOptions = { username: string; password: string; submitForms: boolean; depth: ValidationDepth; testActions: boolean; maxMinutes: number; fastMode: boolean; standard: TestingStandard; schedule: Schedule; scope: "auto" | AccessScope };
 
 const DURATIONS = [15, 30, 60, 120];
 
@@ -33,13 +33,14 @@ type Props = {
   opts: RunOptions;
   setOpts: (o: RunOptions) => void;
   hasRun: boolean;
+  run: TestRun | null;
   starting: boolean;
   sweeping: boolean;
   onStart: (m: ManualInput, url: string) => Promise<void>;
   onExecute: () => void;
 };
 
-export default function SetupPanel({ opts, setOpts, hasRun, starting, sweeping, onStart, onExecute }: Props) {
+export default function SetupPanel({ opts, setOpts, hasRun, run, starting, sweeping, onStart, onExecute }: Props) {
   const [mode, setMode] = useState<Mode>("text");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -231,6 +232,30 @@ export default function SetupPanel({ opts, setOpts, hasRun, starting, sweeping, 
             />
             <p className="text-xs text-mut">Used only for this run. It is not saved.</p>
           </div>
+          {run?.access_scope && (
+            <p className="mt-2 text-xs text-mut">
+              Detected: {SCOPE_LABEL[run.access_scope]}
+              {run.login_user ? `, user ${run.login_user}` : ""}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="sweep-scope" className={label}>
+            Test scope
+          </label>
+          <select
+            id="sweep-scope"
+            value={opts.scope}
+            onChange={(e) => setOpts({ ...opts, scope: e.target.value as RunOptions["scope"] })}
+            disabled={busy}
+            className={field}
+          >
+            <option value="auto">Auto (detected)</option>
+            <option value="before_login">Before login</option>
+            <option value="after_login">After login</option>
+            <option value="both">Both</option>
+          </select>
         </div>
 
         <label className="flex items-start gap-2">
@@ -274,6 +299,51 @@ export default function SetupPanel({ opts, setOpts, hasRun, starting, sweeping, 
           <p id="depth-hint" className="mt-1 text-xs text-mut">
             {opts.submitForms
               ? DEPTH_HINT[opts.depth]
+              : "Turn on “Also test forms” to use this."}
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="sweep-standard" className={label}>
+            Testing standard
+          </label>
+          <select
+            id="sweep-standard"
+            value={opts.standard}
+            onChange={(e) => setOpts({ ...opts, standard: e.target.value as TestingStandard })}
+            disabled={busy || !opts.submitForms}
+            aria-describedby="standard-hint"
+            className={field}
+          >
+            <option value="owasp">OWASP</option>
+            <option value="istqb">ISTQB</option>
+            <option value="iso29119">ISO/IEC/IEEE 29119</option>
+          </select>
+          <p id="standard-hint" className="mt-1 text-xs text-mut">
+            {opts.submitForms
+              ? "Changes case order and tags; cases are mapped to the standard."
+              : "Turn on “Also test forms” to use this."}
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="sweep-schedule" className={label}>
+            Schedule
+          </label>
+          <select
+            id="sweep-schedule"
+            value={opts.schedule}
+            onChange={(e) => setOpts({ ...opts, schedule: e.target.value as Schedule })}
+            disabled={busy || !opts.submitForms}
+            aria-describedby="schedule-hint"
+            className={field}
+          >
+            <option value="page">Page by page</option>
+            <option value="round_robin">Breadth first</option>
+          </select>
+          <p id="schedule-hint" className="mt-1 text-xs text-mut">
+            {opts.submitForms
+              ? "Breadth first covers every form when the time limit is short."
               : "Turn on “Also test forms” to use this."}
           </p>
         </div>

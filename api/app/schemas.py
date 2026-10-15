@@ -46,12 +46,18 @@ class TestRunOut(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     max_minutes: int | None = None
+    testing_standard: str | None = None
+    schedule: str | None = None
+    access_scope: str | None = None
+    login_user: str | None = None
 
     @classmethod
     def from_model(cls, r: TestRun, warning: str | None = None) -> "TestRunOut":
         return cls(id=r.id, manual_id=r.manual_id, base_url=r.base_url, status=r.status, error=r.error,
                    created_at=_iso(r), warning=warning, started_at=_utc(r.started_at),
-                   finished_at=_utc(r.finished_at), max_minutes=r.max_minutes)
+                   finished_at=_utc(r.finished_at), max_minutes=r.max_minutes,
+                   testing_standard=r.testing_standard, schedule=r.schedule,
+                   access_scope=r.access_scope, login_user=r.login_user)
 
 
 class ConsoleMessage(BaseModel):

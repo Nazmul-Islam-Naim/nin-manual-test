@@ -389,3 +389,96 @@ def test_classification_matrix():
     for t in ("SQLSTATE[42000]", "ORA-00933", "Unclosed quotation mark", "sqlite3.OperationalError", "PG::SyntaxError"):
         assert cases.sql_excerpt(f"x {t} y")
     assert cases.sql_excerpt("all fine") is None
+
+
+# ---- testing standard (instruction 017) ---------------------------------------------------------
+
+TEXT_FIELD = {"i": 0, "tag": "input", "type": "text", "name": "note", "label": "Note", "placeholder": "",
+              "disabled": False, "readonly": False, "visible": True, "required": True, "maxlength": None}
+
+
+def test_standard_order_and_tags():
+    base = cases.build_cases([TEXT_FIELD], [], "thorough")
+    cats = lambda cs: [c.category for c in cs]  # noqa: E731
+    owasp = cases.build_cases([TEXT_FIELD], [], "thorough", "owasp")
+    assert cats(owasp)[:4] == ["xss", "xss", "sqli", "sqli"] and cats(owasp)[-1] == "blank"
+    istqb = cases.build_cases([TEXT_FIELD], [], "thorough", "istqb")
+    assert cats(istqb)[0] == "blank"
+    assert sorted(cats(owasp)) == sorted(cats(istqb)) == sorted(cats(base))  # case set unchanged
+    refs = {c.category: c.meta("F", "owasp")["standard_ref"] for c in owasp}
+    assert refs["xss"] == refs["sqli"] == "OWASP A03: Injection" and refs["long"] == "OWASP ASVS V5: Validation"
+    assert cases.standard_ref("istqb", "boundary") == "ISTQB: Boundary Value Analysis"
+    assert cases.standard_ref("istqb", "blank") == "ISTQB: Equivalence Partitioning"
+    assert cases.standard_ref("istqb", "xss") == "ISTQB: Error Guessing"
+    assert cases.standard_ref("iso29119", "format") == "ISO/IEC/IEEE 29119-4: Equivalence Partitioning"
+    num = dict(TEXT_FIELD, type="number")
+    assert cats(cases.build_cases([num], [], "thorough", "iso29119"))[0] == "boundary"
+    assert base[0].meta("F")["standard_ref"] is None
+
+
+def test_execute_testing_standard_body_default_and_old_run(client):
+    app.dependency_overrides[get_execution_service] = lambda: ExecutionService(
+        ExecutionRepository(SessionLocal()), lambda *a: None)
+    old = make_run("http://x.test/", status="parsed")
+    assert client.get(f"/test-runs/{old}").json()["testing_standard"] is None
+    assert client.post(f"/test-runs/{old}/execute", json={}).status_code == 202
+    assert client.get(f"/test-runs/{old}").json()["testing_standard"] == "owasp"  # EXEC_TESTING_STANDARD default
+    rid = make_run("http://x.test/", status="parsed")
+    assert client.post(f"/test-runs/{rid}/execute", json={"testing_standard": "iso29119"}).status_code == 202
+    assert client.get(f"/test-runs/{rid}").json()["testing_standard"] == "iso29119"
+    other = make_run("http://x.test/", status="parsed")
+    for bad in ("ISTQB", "iso", "", 1):
+        r = client.post(f"/test-runs/{other}/execute", json={"testing_standard": bad})
+        assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_request"
+    app.dependency_overrides.clear()
+
+
+def test_testing_standard_env_default(monkeypatch):
+    fresh = get_settings.__wrapped__
+    monkeypatch.delenv("EXEC_TESTING_STANDARD", raising=False)
+    assert fresh().exec_testing_standard == "owasp"
+    monkeypatch.setenv("EXEC_TESTING_STANDARD", "ISTQB")
+    assert fresh().exec_testing_standard == "istqb"
+    monkeypatch.setenv("EXEC_TESTING_STANDARD", "x")
+    assert fresh().exec_testing_standard == "owasp"
+
+
+def test_startup_adds_testing_standard_column(client):
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE test_runs DROP COLUMN testing_standard"))
+    with TestClient(app):
+        assert "testing_standard" in {c["name"] for c in inspect(engine).get_columns("test_runs")}
+
+
+def test_execute_schedule_body_default_and_old_run(client):
+    app.dependency_overrides[get_execution_service] = lambda: ExecutionService(
+        ExecutionRepository(SessionLocal()), lambda *a: None)
+    old = make_run("http://x.test/", status="parsed")
+    assert client.get(f"/test-runs/{old}").json()["schedule"] is None
+    assert client.post(f"/test-runs/{old}/execute", json={}).status_code == 202
+    assert client.get(f"/test-runs/{old}").json()["schedule"] == "page"  # EXEC_SCHEDULE default
+    rid = make_run("http://x.test/", status="parsed")
+    assert client.post(f"/test-runs/{rid}/execute", json={"schedule": "round_robin"}).status_code == 202
+    assert client.get(f"/test-runs/{rid}").json()["schedule"] == "round_robin"
+    other = make_run("http://x.test/", status="parsed")
+    for bad in ("Page", "breadth", "", 1):
+        r = client.post(f"/test-runs/{other}/execute", json={"schedule": bad})
+        assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_request"
+    app.dependency_overrides.clear()
+
+
+def test_schedule_env_default(monkeypatch):
+    fresh = get_settings.__wrapped__
+    monkeypatch.delenv("EXEC_SCHEDULE", raising=False)
+    assert fresh().exec_schedule == "page"
+    monkeypatch.setenv("EXEC_SCHEDULE", "Round_Robin")
+    assert fresh().exec_schedule == "round_robin"
+    monkeypatch.setenv("EXEC_SCHEDULE", "x")
+    assert fresh().exec_schedule == "page"
+
+
+def test_startup_adds_schedule_column(client):
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE test_runs DROP COLUMN schedule"))
+    with TestClient(app):
+        assert "schedule" in {c["name"] for c in inspect(engine).get_columns("test_runs")}

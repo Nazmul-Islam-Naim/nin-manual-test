@@ -14,6 +14,7 @@ from tests.test_execution import Handler, _reset_hits, fake_execution, make_run,
 
 NAV = '<nav><a href="/sales">Sales</a> <a href="/tabs">Tabs</a> <a href="/cards">Cards</a> <a href="/misc">Misc</a></nav>'
 MANY_NAV = '<nav><a href="/many">Many</a> <a href="/many2">Many2</a></nav>'
+HUB_NAV = '<nav><a href="/hub">Hub</a> <a href="/target">Target</a></nav>'
 NOTE = "Actions inside pages opened by an action were not followed"
 
 
@@ -55,6 +56,8 @@ PAGES = {
                 "<p id=o>original</p>"),
     "/about": pg("<p>about</p>"), "/popup": pg("<p>popup</p>"),
     "/many": many("A"), "/many2": many("B"),
+    "/hub": pg('<div><a href="/target">Go target</a></div><div><a href="/other">Go other</a></div>', HUB_NAV),
+    "/target": pg("<form method=post action=/add-post name=TargetF><label>Title <input name=title required></label><button>Save</button></form>", HUB_NAV), "/other": pg("<form method=post action=/add-post name=OtherF><label>Title <input name=title required></label><button>Save</button></form>", HUB_NAV),
 }
 
 
@@ -195,6 +198,17 @@ def test_caps_and_notes(client, asite):
     assert "'Many' has 3 actions, tested the first 2" in b["note"]
     assert "Reached MAX_ACTIONS (3), remaining actions skipped" in b["note"] and NOTE in b["note"]
     assert b["summary"]["total"] == 5
+
+
+def test_action_to_menu_page_does_not_retest_its_forms(client, asite):
+    rid = make_run(asite + "/hub")
+    runner.run_sweep(rid, None, submit_forms=True, validation_depth="basic", test_actions=True)
+    st = steps(client, rid)["test_cases"][0]["steps"]
+    to_menu = [s for s in st if s["target"] == "Hub > Go target"][0]
+    assert "menu item" in to_menu["value"] and to_menu["result"]["status"] == "passed"
+    assert not [s for s in st if s["target"].startswith("Hub > Go target > ")]  # tested under the Target menu
+    assert [s for s in st if s["target"].startswith("Target > TargetF")]
+    assert [s for s in st if s["target"].startswith("Hub > Go other > OtherF")]  # non-menu destination still tested
 
 
 def test_execute_forwards_and_validates_test_actions(client):

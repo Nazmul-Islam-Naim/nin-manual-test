@@ -7,12 +7,12 @@ import { useRunSession } from "./useRunSession";
 
 export default function TestRunner() {
   const s = useRunSession();
-  const [opts, setOpts] = useState<RunOptions>({ username: "", password: "", submitForms: true, depth: "thorough", testActions: true, maxMinutes: 60, fastMode: false });
+  const [opts, setOpts] = useState<RunOptions>({ username: "", password: "", submitForms: true, depth: "thorough", testActions: true, maxMinutes: 60, fastMode: false, standard: "owasp", schedule: "page", scope: "auto" });
   const sweeping = s.run?.status === "running";
 
   const execute = () => {
     const creds = opts.username.trim() || opts.password ? { username: opts.username, password: opts.password } : null;
-    return s.execute(creds, opts.submitForms, opts.depth, opts.testActions, opts.maxMinutes, opts.fastMode);
+    return s.execute(creds, opts.submitForms, opts.depth, opts.testActions, opts.maxMinutes, opts.fastMode, opts.standard, opts.schedule, opts.scope === "auto" ? undefined : opts.scope);
   };
 
   return (
@@ -21,6 +21,7 @@ export default function TestRunner() {
         opts={opts}
         setOpts={setOpts}
         hasRun={!!s.run}
+        run={s.run}
         starting={s.starting}
         sweeping={sweeping}
         onStart={s.start}

@@ -100,6 +100,9 @@ class ExecuteBody(BaseModel):
     validation_depth: Literal["basic", "standard", "thorough"] | None = None  # None -> EXEC_VALIDATION_DEPTH
     max_minutes: Annotated[int, Field(strict=True, ge=1, le=240)] | None = None  # None -> EXEC_OVERALL_TIMEOUT_S
     fast_mode: StrictBool | None = None  # None -> false
+    testing_standard: Literal["owasp", "istqb", "iso29119"] | None = None  # None -> EXEC_TESTING_STANDARD
+    schedule: Literal["page", "round_robin"] | None = None  # None -> EXEC_SCHEDULE
+    access_scope: Literal["before_login", "after_login", "both"] | None = None  # None -> value found by parsing
 
 
 @router.post("/{run_id}/execute", status_code=202)
@@ -107,5 +110,6 @@ def execute(run_id: str, body: ExecuteBody | None = None, svc: ExecutionService 
     creds = body.credentials.model_dump() if body and body.credentials else None
     svc.execute(run_id, creds, body.submit_forms if body else None, body.validation_depth if body else None,
                 body.test_actions if body else None, body.max_minutes if body else None,
-                body.fast_mode if body else None)
+                body.fast_mode if body else None, body.testing_standard if body else None,
+                body.schedule if body else None, body.access_scope if body else None)
     return {"id": run_id, "status": "running"}

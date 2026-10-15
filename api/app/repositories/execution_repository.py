@@ -23,12 +23,16 @@ class ExecutionRepository:
             run.finished_at = datetime.utcnow()
         self.db.commit()
 
-    def start(self, run_id: str, max_minutes: int | None = None) -> None:
+    def start(self, run_id: str, max_minutes: int | None = None, testing_standard: str | None = None,
+              schedule: str | None = None, access_scope: str | None = None) -> None:
         """Mark running and drop the previous sweep (re-run replaces it)."""
         self._clear_sweep(run_id)
         run = self.db.get(TestRun, run_id)
         run.status, run.error, run.sweep_note = "running", None, None
         run.started_at, run.finished_at, run.max_minutes = datetime.utcnow(), None, max_minutes
+        run.testing_standard, run.schedule = testing_standard, schedule
+        if access_scope:  # override; otherwise keep what parsing found
+            run.access_scope = access_scope
         self.db.commit()
 
     def begin(self, run_id: str, default_minutes: int) -> None:
@@ -104,6 +108,11 @@ class ExecutionRepository:
             self.db.add(row)
         for k, v in fields.items():
             setattr(row, k, v)
+        self.db.commit()
+
+    def append_step_value(self, step_id: str, text: str) -> None:
+        step = self.db.get(Step, step_id)
+        step.value = (step.value or "") + text
         self.db.commit()
 
     def results_for_run(self, run_id: str) -> dict[str, StepResult]:

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ManualSummary, RunSteps, Step, TestRun } from "@/lib/api";
+import { SCOPE_LABEL, STANDARD_LABEL, type ManualSummary, type RunSteps, type Step, type TestRun } from "@/lib/api";
 import CopyButton from "@/components/ui/CopyButton";
 import ManualSteps from "@/features/manual/ManualSteps";
 import FormCases from "./FormCases";
@@ -164,6 +164,9 @@ export default function ResultsPanel({ run, data, manual, startedAt, problem, ti
           <p className="mt-1 wrap-break-word text-mut">
             <span className="font-mono text-xs">{host}</span> · run{" "}
             <span className="font-mono text-xs">{run.id.slice(0, 8)}</span> · <span className="capitalize">{status}</span>
+            {run.testing_standard && <> · mapped to {STANDARD_LABEL[run.testing_standard] ?? run.testing_standard}</>}
+            {run.access_scope && <> · {SCOPE_LABEL[run.access_scope]}</>}
+            {run.schedule && <> · {run.schedule === "page" ? "page by page" : "breadth first"}</>}
             {began && !Number.isNaN(Date.parse(began)) && (
               <> · started {new Date(began).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
             )}

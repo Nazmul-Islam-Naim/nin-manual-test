@@ -1,4 +1,4 @@
-import type { RunSteps, Step, SweepSummary, TestRun } from "@/lib/api";
+import { STANDARD_LABEL, type RunSteps, type Step, type SweepSummary, type TestRun } from "@/lib/api";
 import type { ChipKey } from "@/components/ui/StatusChip";
 import { infoFor } from "./errorInfo";
 
@@ -105,6 +105,7 @@ function evidenceOf(st: Step): Evidence[] {
   if (kase) ev.push({ label: "Data used", value: st.value ?? "" });
   if (kase && st.expected) ev.push({ label: "Expected", value: st.expected });
   if (kase && st.meta) ev.push({ label: "Source", value: st.meta.source });
+  if (kase && st.meta?.standard_ref) ev.push({ label: "Mapped to", value: st.meta.standard_ref });
   if (r.error) ev.push({ label: "Message", value: r.error });
   if (r.page_url) ev.push({ label: "Page", value: r.page_url });
   if (r.http_status) ev.push({ label: "HTTP status", value: String(r.http_status) });
@@ -169,6 +170,7 @@ export function buildMarkdown(run: TestRun, steps: RunSteps | null, summary: Swe
     ...(finished ? [`- Finished: ${code(finished)}`] : []),
     ...(duration ? [`- Duration: ${code(duration)}`] : []),
     `- Status: ${esc(run.status)}`,
+    ...(run.testing_standard ? [`- Testing standard: ${esc(STANDARD_LABEL[run.testing_standard] ?? run.testing_standard)} (cases are mapped to it)`] : []),
     "",
     "## Summary",
     "",

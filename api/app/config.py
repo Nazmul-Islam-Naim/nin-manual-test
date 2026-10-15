@@ -32,6 +32,8 @@ class Settings:
     max_forms_per_page: int
     max_forms: int
     exec_validation_depth: str
+    exec_testing_standard: str
+    exec_schedule: str
     max_cases_per_form: int
     max_cases: int
     exec_test_actions: bool
@@ -45,13 +47,23 @@ def _depth(v: str) -> str:
     return v if v in ("basic", "standard", "thorough") else "thorough"  # bad env value -> default
 
 
+def _standard(v: str) -> str:
+    v = v.strip().lower()
+    return v if v in ("owasp", "istqb", "iso29119") else "owasp"
+
+
+def _schedule(v: str) -> str:
+    v = v.strip().lower()
+    return v if v in ("page", "round_robin") else "page"
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings(
         database_url=os.getenv("DATABASE_URL", "sqlite:///./data/app.db"),
         storage_dir=Path(os.getenv("STORAGE_DIR", "./storage")),
         max_upload_bytes=int(float(os.getenv("MAX_UPLOAD_MB", "10")) * 1024 * 1024),
-        cors_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
+        cors_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3002").split(",") if o.strip()],
         allow_private_urls=os.getenv("ALLOW_PRIVATE_URLS", "true").strip().lower() in ("1", "true", "yes"),
         url_check_timeout_s=float(os.getenv("URL_CHECK_TIMEOUT_S", "10")),
         llm_provider=os.getenv("LLM_PROVIDER", "claude_cli").strip().lower(),
@@ -74,6 +86,8 @@ def get_settings() -> Settings:
         max_forms_per_page=int(os.getenv("MAX_FORMS_PER_PAGE", "5")),
         max_forms=int(os.getenv("MAX_FORMS", "50")),
         exec_validation_depth=_depth(os.getenv("EXEC_VALIDATION_DEPTH", "thorough")),
+        exec_testing_standard=_standard(os.getenv("EXEC_TESTING_STANDARD", "owasp")),
+        exec_schedule=_schedule(os.getenv("EXEC_SCHEDULE", "page")),
         max_cases_per_form=int(os.getenv("MAX_CASES_PER_FORM", "25")),
         max_cases=int(os.getenv("MAX_CASES", "200")),
         exec_test_actions=os.getenv("EXEC_TEST_ACTIONS", "true").strip().lower() in ("1", "true", "yes"),
